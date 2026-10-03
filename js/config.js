@@ -22,8 +22,8 @@ window.SITE = {
   /* ----- Supabase (powers the dashboard, shared wishlist counts, image storage) -----
      Leave both blank to run the site without a backend: products then come from
      js/products.js and images from the images/ folder. See README.md. */
-  SUPABASE_URL: "",         // e.g. "https://abcdxyz.supabase.co"
-  SUPABASE_ANON_KEY: "",    // the public "anon" or "publishable" key (never the service_role key)
+  SUPABASE_URL: "https://dmbdurptnmuqhrezxook.supabase.co/rest/v1/",         // e.g. "https://abcdxyz.supabase.co"
+  SUPABASE_ANON_KEY: "sb_publishable_Q-spd25Usj9M6bX1frtEfQ_2qO87g5c",    // the public "anon" or "publishable" key (never the service_role key)
 
   /* ----- Google AdSense side banners (leave blank until Google approves you) ----- */
   ADSENSE_CLIENT: "",       // e.g. "ca-pub-1234567890123456"
