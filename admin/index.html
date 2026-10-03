@@ -74,6 +74,7 @@
     <div class="mx-auto flex max-w-6xl px-4" role="tablist">
       <button class="tab" role="tab" id="tabProducts" aria-selected="true" aria-controls="panelProducts" type="button">Products</button>
       <button class="tab" role="tab" id="tabImages" aria-selected="false" aria-controls="panelImages" type="button">Images</button>
+      <button class="tab" role="tab" id="tabInsights" aria-selected="false" aria-controls="panelInsights" type="button">Insights</button>
     </div>
   </header>
 
@@ -113,6 +114,27 @@
       <h2 class="mb-3 text-lg font-bold" id="imagesTitle">Photo library</h2>
       <div id="imageGrid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"></div>
       <p id="imagesEmpty" class="hidden rounded-2xl bg-white p-6 text-center text-soft">No photos uploaded yet.</p>
+    </section>
+
+    <!-- INSIGHTS -->
+    <section id="panelInsights" role="tabpanel" aria-labelledby="tabInsights" class="hidden">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-bold">Insights</h2>
+        <div class="flex items-center gap-2">
+          <label class="text-sm font-semibold" for="insDays">Period</label>
+          <select id="insDays" class="field !w-auto">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <button id="insRefresh" type="button" class="btn-ghost">Refresh</button>
+        </div>
+      </div>
+      <p class="mb-4 text-sm text-soft">See which products get the most clicks on "Check it out" and the most WhatsApp shares. Use it to promote what works.</p>
+      <div id="insNotice" class="mb-4 hidden rounded-2xl bg-white p-5 text-sm shadow-sm"></div>
+      <div id="insSummary" class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4"></div>
+      <div id="insTable" class="overflow-x-auto rounded-2xl bg-white shadow-sm"></div>
+      <div class="mt-4"><button id="insClear" type="button" class="btn-danger hidden">Clear all click data</button></div>
     </section>
   </main>
 </div>
@@ -166,6 +188,12 @@
             <label class="label" for="pfPrice">Price (optional)</label>
             <input id="pfPrice" class="field" placeholder="KSh 2,499">
           </div>
+        </div>
+        <div id="pfBadgeWrap" class="hidden">
+          <label class="label" for="pfBadge">Extra badge (optional)</label>
+          <input id="pfBadge" class="field" list="badgeList" maxlength="24" placeholder="e.g. Staff pick">
+          <datalist id="badgeList"><option value="Staff pick"></option><option value="Mum tested"></option></datalist>
+          <p class="mt-1 text-xs text-soft">Only use "Mum tested" if someone has really used the product.</p>
         </div>
         <div>
           <label class="label" for="pfLink">Jumia affiliate link</label>

@@ -39,13 +39,20 @@
     return;
   }
 
-  var sb = window.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY);
+  /* Accepts a pasted address even with a trailing slash or extra path,
+     and reduces it to the plain  https://xxxx.supabase.co  form. */
+  function cleanUrl(u) {
+    u = String(u || "").trim();
+    try { return new URL(u).origin; } catch (e) { return u.replace(/\/+$/, ""); }
+  }
+  var sb = window.supabase.createClient(cleanUrl(C.SUPABASE_URL), String(C.SUPABASE_ANON_KEY).trim());
 
   /* ---------- state ---------- */
   var products = [];
   var images = [];          // {name, url, created}
   var counts = {};          // product id -> {clicks, adjust}
   var pickerCallback = null;
+  var HAS_BADGE = false;    // true once the optional supabase-upgrade.sql has been run
 
   /* ---------- modals ---------- */
   function openModal(id) {
@@ -84,6 +91,9 @@
     $("#userEmail").textContent = session.user.email;
     hide($("#loginView"));
     show($("#appView"));
+    var probe = await sb.from("products").select("badge").limit(1);
+    HAS_BADGE = !probe.error;
+    if (HAS_BADGE) show($("#pfBadgeWrap")); else hide($("#pfBadgeWrap"));
     await refreshAll();
   }
 
@@ -109,14 +119,16 @@
 
   /* ---------- tabs ---------- */
   function selectTab(which) {
-    var isProducts = which === "products";
-    $("#tabProducts").setAttribute("aria-selected", String(isProducts));
-    $("#tabImages").setAttribute("aria-selected", String(!isProducts));
-    if (isProducts) { show($("#panelProducts")); hide($("#panelImages")); }
-    else { hide($("#panelProducts")); show($("#panelImages")); }
+    ["products", "images", "insights"].forEach(function (name) {
+      var cap = name.charAt(0).toUpperCase() + name.slice(1);
+      $("#tab" + cap).setAttribute("aria-selected", String(name === which));
+      if (name === which) show($("#panel" + cap)); else hide($("#panel" + cap));
+    });
+    if (which === "insights") loadInsights();
   }
   $("#tabProducts").addEventListener("click", function () { selectTab("products"); });
   $("#tabImages").addEventListener("click", function () { selectTab("images"); });
+  $("#tabInsights").addEventListener("click", function () { selectTab("insights"); });
 
   /* ---------- loading data ---------- */
   async function loadProducts() {
@@ -183,6 +195,7 @@
         : '<span class="text-2xl">' + categoryEmoji(p.category) + "</span>";
       var badges = "";
       if (p.trending) badges += '<span class="rounded bg-sun px-2 py-0.5 text-xs font-bold">Trending</span> ';
+      if (p.badge) badges += '<span class="rounded bg-ink px-2 py-0.5 text-xs font-bold text-white">' + esc(p.badge) + '</span> ';
       if (!p.published) badges += '<span class="rounded bg-ink px-2 py-0.5 text-xs font-bold text-white">Hidden</span> ';
 
       var row = document.createElement("div");
@@ -195,9 +208,16 @@
           '<p class="text-xs text-soft">Hearts shown: ' + h.shown + " (" + h.clicks + " real " + (h.adjust >= 0 ? "+ " : "- ") + Math.abs(h.adjust) + " adjustment)</p>" +
           '<div class="mt-1">' + badges + "</div>" +
         "</div>" +
-        '<div class="flex flex-none flex-col gap-2 sm:flex-row">' +
-          '<button type="button" class="btn-ghost" data-action="edit" data-id="' + esc(p.id) + '">Edit</button>' +
-          '<button type="button" class="btn-danger" data-action="delete" data-id="' + esc(p.id) + '">Delete</button>' +
+        '<div class="flex flex-none flex-col items-end gap-2">' +
+          '<div class="flex gap-2">' +
+            '<button type="button" class="btn-ghost !px-3" data-action="up" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' up" title="Move up">&uarr;</button>' +
+            '<button type="button" class="btn-ghost !px-3" data-action="down" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' down" title="Move down">&darr;</button>' +
+          "</div>" +
+          '<div class="flex gap-2">' +
+            '<button type="button" class="btn-ghost" data-action="edit" data-id="' + esc(p.id) + '">Edit</button>' +
+            '<button type="button" class="btn-ghost" data-action="duplicate" data-id="' + esc(p.id) + '">Copy</button>' +
+            '<button type="button" class="btn-danger" data-action="delete" data-id="' + esc(p.id) + '">Delete</button>' +
+          "</div>" +
         "</div>";
       list.appendChild(row);
     });
@@ -209,9 +229,35 @@
     var id = b.getAttribute("data-id");
     var p = products.filter(function (x) { return x.id === id; })[0];
     if (!p) return;
-    if (b.getAttribute("data-action") === "edit") openProductForm(p);
+    var act = b.getAttribute("data-action");
+    if (act === "edit") openProductForm(p, false);
+    else if (act === "duplicate") openProductForm(p, true);
+    else if (act === "up") moveProduct(p, -1);
+    else if (act === "down") moveProduct(p, 1);
     else deleteProduct(p);
   });
+
+  /* Move a product up or down the list (the order shoppers see). */
+  async function moveProduct(p, dir) {
+    var i = products.indexOf(p);
+    var j = i + dir;
+    if (i < 0 || j < 0 || j >= products.length) return;
+    var order = products.slice();
+    order[i] = order[j];
+    order[j] = p;
+    var jobs = [];
+    order.forEach(function (item, idx) {
+      var want = idx * 10;
+      if (item.sort_order !== want) {
+        jobs.push(sb.from("products").update({ sort_order: want }).eq("id", item.id));
+      }
+    });
+    var results = await Promise.all(jobs);
+    var bad = results.filter(function (r) { return r.error; })[0];
+    if (bad) { toast("Could not reorder: " + bad.error.message, true); }
+    await loadProducts();
+    renderProducts();
+  }
 
   async function deleteProduct(p) {
     if (!confirm('Delete "' + p.name + '"? This cannot be undone.\n\n(The photo stays in your Photo library.)')) return;
@@ -244,32 +290,33 @@
     }
   }
 
-  function openProductForm(p) {
+  function openProductForm(p, asCopy) {
     fillCategoryList();
-    var isNew = !p;
-    $("#productModalTitle").textContent = isNew ? "Add product" : "Edit product";
-    $("#pfId").value = isNew ? "" : p.id;
-    $("#pfName").value = isNew ? "" : p.name;
-    $("#pfDesc").value = isNew ? "" : (p.description || "");
-    $("#pfCategory").value = isNew ? "" : (p.category || "");
-    $("#pfPrice").value = isNew ? "" : (p.price || "");
-    $("#pfLink").value = isNew ? (C.DEFAULT_LINK || "") : (p.link || "");
-    $("#pfSort").value = isNew ? 0 : (p.sort_order || 0);
-    $("#pfTrending").checked = isNew ? false : !!p.trending;
-    $("#pfPublished").checked = isNew ? true : !!p.published;
+    var fresh = !p || asCopy;
+    $("#productModalTitle").textContent = !p ? "Add product" : (asCopy ? "Copy product" : "Edit product");
+    $("#pfId").value = fresh ? "" : p.id;
+    $("#pfName").value = !p ? "" : (asCopy ? p.name + " (copy)" : p.name);
+    $("#pfDesc").value = !p ? "" : (p.description || "");
+    $("#pfCategory").value = !p ? "" : (p.category || "");
+    $("#pfPrice").value = !p ? "" : (p.price || "");
+    $("#pfLink").value = !p ? (C.DEFAULT_LINK || "") : (p.link || "");
+    $("#pfSort").value = !p ? 0 : (p.sort_order || 0);
+    $("#pfBadge").value = !p ? "" : (p.badge || "");
+    $("#pfTrending").checked = !p ? false : !!p.trending;
+    $("#pfPublished").checked = !p ? true : !!p.published;
     $("#pfCrop").checked = false;
     $("#pfUploadStatus").textContent = "";
 
-    var h = isNew ? { clicks: 0, adjust: 0, shown: 0 } : heartsText(p.id);
+    var h = fresh ? { clicks: 0, adjust: 0, shown: 0 } : heartsText(p.id);
     $("#pfAdjust").value = h.adjust;
     $("#pfHearts").textContent = "Real taps so far: " + h.clicks + ". Shown on the site = real taps + this number.";
 
-    setFormImage(isNew ? "" : p.image_url);
+    setFormImage(!p ? "" : p.image_url);
     openModal("productModal");
     $("#pfName").focus();
   }
 
-  $("#addProduct").addEventListener("click", function () { openProductForm(null); });
+  $("#addProduct").addEventListener("click", function () { openProductForm(null, false); });
   $("#pfRemoveImage").addEventListener("click", function () { setFormImage(""); });
   $("#pfCategory").addEventListener("input", function () {
     if (!$("#pfImage").value) setFormImage("");
@@ -312,6 +359,7 @@
       published: $("#pfPublished").checked,
       sort_order: parseInt($("#pfSort").value, 10) || 0
     };
+    if (HAS_BADGE) payload.badge = $("#pfBadge").value.trim();
     var adjust = parseInt($("#pfAdjust").value, 10) || 0;
     var id = $("#pfId").value;
 
@@ -497,6 +545,58 @@
     }
     openModal("pickerModal");
   }
+
+  /* ---------- insights ---------- */
+  async function loadInsights() {
+    var days = parseInt($("#insDays").value, 10) || 30;
+    var notice = $("#insNotice");
+    hide(notice);
+    $("#insTable").innerHTML = "";
+    $("#insSummary").innerHTML = "";
+    hide($("#insClear"));
+
+    var r = await sb.rpc("click_summary", { days: days });
+    if (r.error) {
+      notice.innerHTML = "<strong>Insights need a one-time upgrade.</strong> In Supabase, open <em>SQL Editor</em>, paste the contents of <code>supabase-upgrade.sql</code>, and click <em>Run</em>. Then press Refresh here.";
+      show(notice);
+      return;
+    }
+    show($("#insClear"));
+
+    var byId = {};
+    (r.data || []).forEach(function (row) { byId[row.product_id] = row; });
+    var rows = products.map(function (p) {
+      var e = byId[String(p.id)] || {};
+      return { name: p.name, clicks: Number(e.clicks) || 0, shares: Number(e.shares) || 0, last: e.last_click, hearts: heartsText(p.id).shown };
+    });
+    rows.sort(function (a, b) { return (b.clicks - a.clicks) || (b.shares - a.shares) || (b.hearts - a.hearts); });
+
+    var totalClicks = rows.reduce(function (n, x) { return n + x.clicks; }, 0);
+    var totalShares = rows.reduce(function (n, x) { return n + x.shares; }, 0);
+    var top = rows[0] && rows[0].clicks > 0 ? rows[0].name : "-";
+    function card(label, value) {
+      return '<div class="rounded-2xl bg-white p-4 shadow-sm"><p class="text-xs font-semibold text-soft">' + esc(label) + '</p><p class="mt-1 truncate text-xl font-extrabold">' + esc(value) + "</p></div>";
+    }
+    $("#insSummary").innerHTML = card("Clicks to Jumia", totalClicks) + card("WhatsApp shares", totalShares) + card("Products", products.length) + card("Top product", top);
+
+    if (!rows.length) { $("#insTable").innerHTML = '<p class="p-6 text-center text-soft">Add some products first.</p>'; return; }
+    var body = rows.map(function (x) {
+      var last = x.last ? new Date(x.last).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
+      return '<tr class="border-t border-line"><td class="px-4 py-3 font-semibold">' + esc(x.name) + '</td><td class="px-4 py-3 text-right">' + x.clicks +
+        '</td><td class="px-4 py-3 text-right">' + x.shares + '</td><td class="px-4 py-3 text-right">' + x.hearts + '</td><td class="px-4 py-3 text-right text-soft">' + esc(last) + "</td></tr>";
+    }).join("");
+    $("#insTable").innerHTML = '<table class="w-full text-sm"><thead class="text-left text-xs text-soft"><tr><th class="px-4 py-3">Product</th><th class="px-4 py-3 text-right">Clicks</th><th class="px-4 py-3 text-right">Shares</th><th class="px-4 py-3 text-right">Hearts</th><th class="px-4 py-3 text-right">Last click</th></tr></thead><tbody>' + body + "</tbody></table>";
+  }
+
+  $("#insRefresh").addEventListener("click", loadInsights);
+  $("#insDays").addEventListener("change", loadInsights);
+  $("#insClear").addEventListener("click", async function () {
+    if (!confirm("Delete ALL recorded click and share data? This cannot be undone.")) return;
+    var r = await sb.from("click_events").delete().neq("product_id", "");
+    if (r.error) { toast("Could not clear: " + r.error.message, true); return; }
+    toast("Click data cleared");
+    loadInsights();
+  });
 
   /* ---------- start ---------- */
   (async function init() {

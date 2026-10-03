@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Due date calculator | Mama Picks Kenya</title>
+<meta name="description" content="Free pregnancy due date calculator. Enter the first day of your last period to see your estimated due date, current week, trimester and key dates.">
+<meta name="theme-color" content="#14303a">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Mama Picks Kenya">
+<meta property="og:title" content="Due date calculator">
+<meta property="og:description" content="Free pregnancy due date calculator. Enter the first day of your last period to see your estimated due date, current week, trimester and key dates.">
+<meta property="og:image" content="https://murumbaron.github.io/mamaspick/images/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Pregnancy due date calculator",
+  "description": "Free due date calculator based on the first day of your last period.",
+  "image": "https://murumbaron.github.io/mamaspick/images/og-image.png",
+  "dateModified": "2026-10-03",
+  "datePublished": "2026-10-03",
+  "author": {
+    "@type": "Organization",
+    "name": "Mama Picks Kenya"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Mama Picks Kenya"
+  },
+  "mainEntityOfPage": "https://murumbaron.github.io/mamaspick/due-date-calculator.html"
+}
+</script>
+</head>
+<body data-page="due-date-calculator">
+
+<div id="site-header"></div>
+
+<header class="page-hero">
+  <div class="wrap">
+    <p class="crumbs"><a href="index.html">Home</a> / <a href="guides.html">Guides</a> / Due date calculator</p>
+    <h1>Pregnancy due date calculator</h1>
+    <p class="lede">Find your estimated due date, how far along you are, and the dates that matter.</p>
+  </div>
+</header>
+
+<main class="page-body">
+  <div class="wrap">
+    <div class="tool">
+      <form class="calc-form" id="dueForm" novalidate>
+        <div>
+          <label for="lmp">First day of your last period</label>
+          <input type="date" id="lmp" required>
+        </div>
+        <div>
+          <label for="cycle">Usual cycle length (days)</label>
+          <input type="number" id="cycle" min="21" max="45" value="28" inputmode="numeric">
+          <small>Most cycles are 28 days. Change this only if yours is usually shorter or longer.</small>
+        </div>
+        <p class="error-text" id="dueError" role="alert" hidden></p>
+        <div><button type="submit" class="btn-solid" style="border:0;cursor:pointer;font-size:1rem;font-family:var(--body)">Calculate</button></div>
+      </form>
+
+      <div class="result" id="dueResult" hidden aria-live="polite">
+        <p class="sub">Your estimated due date</p>
+        <p class="big" id="dueDate"></p>
+        <p class="sub" id="dueNote"></p>
+        <div class="stat-row">
+          <div class="stat"><strong id="statWeeks">-</strong><span>Weeks pregnant</span></div>
+          <div class="stat"><strong id="statTri">-</strong><span>Trimester</span></div>
+          <div class="stat"><strong id="statLeft">-</strong><span>Days to go</span></div>
+          <div class="stat"><strong id="statPct">-</strong><span>Of the way there</span></div>
+        </div>
+        <div>
+          <h2 style="font-family:var(--display);font-size:1.2rem;margin:6px 0 10px">Key dates</h2>
+          <ul class="timeline" id="dueTimeline"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="prose">
+      <div class="callout"><p>This is an estimate only. Only a small share of babies arrive on their exact due date, and many arrive a week or two either side. Your clinic may adjust the date after an ultrasound scan. Please follow their advice.</p></div>
+      <h2>What happens next?</h2>
+      <p>Start packing early with our <a href="hospital-bag-checklist.html">hospital bag checklist</a>, and see what you will need for your baby in the <a href="newborn-essentials-guide.html">newborn essentials guide</a>.</p>
+      <div class="cta-row"><a class="btn-solid" href="index.html?cat=expecting">Shop for the bump</a><a class="btn-outline" href="hospital-bag-checklist.html">Open the hospital bag list</a></div>
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/config.js"></script>
+<script src="js/features.js"></script>
+<script src="js/shared.js"></script>
+<script src="js/due-date.js"></script>
+</body>
+</html>
