@@ -639,6 +639,11 @@
     buildBudgets();
     syncUrl();
     render();
+    MP.fetchPosts({ limit: 3 }).then(function (rows) {
+      if (!rows || !rows.length) return;
+      document.getElementById("latestGrid").innerHTML = rows.map(MP.postCard).join("");
+      document.getElementById("latestPosts").hidden = false;
+    });
     if (startProduct) {
       var p = PRODUCTS.filter(function (x) { return String(x._id) === startProduct; })[0];
       if (p) openQuickView(p, null);

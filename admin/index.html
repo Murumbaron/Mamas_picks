@@ -27,7 +27,24 @@
     .label { @apply mb-1 block text-sm font-semibold; }
     .tab { @apply cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-semibold text-soft hover:text-ink; }
     .tab[aria-selected="true"] { @apply border-cta text-ink; }
+    .tb { @apply cursor-pointer rounded-md border border-line bg-white px-2.5 py-1 text-sm font-semibold hover:bg-sun; }
   }
+</style>
+
+<style>
+  .rich { line-height: 1.6; }
+  .rich p { margin: 0 0 .9em; }
+  .rich h2 { font-size: 1.45rem; font-weight: 800; margin: 1.1em 0 .4em; line-height: 1.2; }
+  .rich h3 { font-size: 1.15rem; font-weight: 700; margin: 1em 0 .4em; }
+  .rich h4 { font-weight: 700; margin: 1em 0 .3em; }
+  .rich ul { list-style: disc; padding-left: 1.4em; margin: 0 0 .9em; }
+  .rich ol { list-style: decimal; padding-left: 1.4em; margin: 0 0 .9em; }
+  .rich blockquote { border-left: 4px solid #e0476f; padding-left: 1em; margin: 1em 0; }
+  .rich a { color: #e0476f; text-decoration: underline; }
+  .rich img { max-width: 100%; height: auto; border-radius: 10px; margin: .8em 0; }
+  .rich hr { margin: 1.4em 0; border: 0; border-top: 1px solid #d3e2db; }
+  #postEditor:empty:before { content: attr(data-placeholder); color: #8aa0a8; }
+  #postEditor:focus { outline: 2px solid #14303a; outline-offset: 0; }
 </style>
 
 <!-- Supabase client library -->
@@ -74,6 +91,7 @@
     <div class="mx-auto flex max-w-6xl px-4" role="tablist">
       <button class="tab" role="tab" id="tabProducts" aria-selected="true" aria-controls="panelProducts" type="button">Products</button>
       <button class="tab" role="tab" id="tabImages" aria-selected="false" aria-controls="panelImages" type="button">Images</button>
+      <button class="tab" role="tab" id="tabBlog" aria-selected="false" aria-controls="panelBlog" type="button">Blog</button>
       <button class="tab" role="tab" id="tabInsights" aria-selected="false" aria-controls="panelInsights" type="button">Insights</button>
     </div>
   </header>
@@ -94,9 +112,16 @@
     <section id="panelImages" role="tabpanel" aria-labelledby="tabImages" class="hidden">
       <div class="mb-6 rounded-2xl bg-white p-5 shadow-sm">
         <h2 class="text-lg font-bold">Upload photos</h2>
-        <p class="mt-1 text-sm text-soft">Any size or shape works. Each photo is automatically resized to a square 800 x 800 picture and compressed before it is saved, so the site stays fast.</p>
+        <p class="mt-1 text-sm text-soft">Any size or shape works. Product photos become a square 800 x 800 picture. Blog images keep their shape and are shrunk to at most 1200 pixels wide. Everything is compressed so the site stays fast.</p>
         <div class="mt-4 flex flex-wrap items-end gap-4">
           <div>
+            <label class="label" for="uploadKind">What are you uploading?</label>
+            <select id="uploadKind" class="field">
+              <option value="product">Product photos (made square)</option>
+              <option value="blog">Blog images (keep their shape)</option>
+            </select>
+          </div>
+          <div id="fitWrap">
             <label class="label" for="fitMode">How to fit the square</label>
             <select id="fitMode" class="field">
               <option value="fit">Show the whole photo (white borders if needed)</option>
@@ -111,9 +136,24 @@
         <p id="uploadStatus" class="mt-3 text-sm text-soft" aria-live="polite"></p>
       </div>
 
-      <h2 class="mb-3 text-lg font-bold" id="imagesTitle">Photo library</h2>
+      <h2 class="mb-3 text-lg font-bold" id="imagesTitle">Product photos</h2>
       <div id="imageGrid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"></div>
-      <p id="imagesEmpty" class="hidden rounded-2xl bg-white p-6 text-center text-soft">No photos uploaded yet.</p>
+      <p id="imagesEmpty" class="hidden rounded-2xl bg-white p-6 text-center text-soft">No product photos uploaded yet.</p>
+
+      <h2 class="mb-3 mt-8 text-lg font-bold" id="blogImagesTitle">Blog images</h2>
+      <div id="blogImageGrid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"></div>
+      <p id="blogImagesEmpty" class="hidden rounded-2xl bg-white p-6 text-center text-soft">No blog images uploaded yet.</p>
+    </section>
+
+    <!-- BLOG -->
+    <section id="panelBlog" role="tabpanel" aria-labelledby="tabBlog" class="hidden">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 class="text-lg font-bold" id="blogTitle">Blog posts</h2>
+        <button id="addPost" type="button" class="btn-primary">New post</button>
+      </div>
+      <div id="blogNotice" class="mb-4 hidden rounded-2xl bg-white p-5 text-sm shadow-sm"></div>
+      <div id="postList" class="space-y-3"></div>
+      <p id="postsEmpty" class="hidden rounded-2xl bg-white p-6 text-center text-soft">No posts yet. Click "New post" to write your first one.</p>
     </section>
 
     <!-- INSIGHTS -->
@@ -225,6 +265,109 @@
   </form>
 </div>
 
+<!-- Post editor -->
+<div id="postModal" class="fixed inset-0 z-40 hidden items-start justify-center overflow-y-auto bg-ink/60 p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="postModalTitle">
+  <form id="postForm" class="my-4 w-full max-w-4xl rounded-2xl bg-white p-4 shadow-xl sm:p-6">
+    <div class="flex items-start justify-between gap-3">
+      <h2 class="text-lg font-bold" id="postModalTitle">New post</h2>
+      <button type="button" class="btn-ghost" id="postClose">Close</button>
+    </div>
+    <input type="hidden" id="poId">
+    <input type="hidden" id="poCover">
+
+    <div class="mt-4 space-y-4">
+      <div>
+        <label class="label" for="poTitle">Title</label>
+        <input id="poTitle" class="field !text-base font-semibold" maxlength="140" required>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <div>
+          <label class="label" for="poSlug">Web address</label>
+          <input id="poSlug" class="field" maxlength="90" autocomplete="off">
+          <p class="mt-1 text-xs text-soft" id="poSlugHint">Made from the title. You can change it.</p>
+        </div>
+        <div>
+          <label class="label" for="poCategory">Category</label>
+          <input id="poCategory" class="field" list="postCatList" maxlength="40" placeholder="e.g. Pregnancy" autocomplete="off">
+          <datalist id="postCatList"><option value="Pregnancy"></option><option value="Newborn"></option><option value="Feeding"></option><option value="Mum care"></option><option value="Shopping tips"></option><option value="Budget"></option></datalist>
+        </div>
+      </div>
+
+      <div>
+        <label class="label" for="poExcerpt">Short summary</label>
+        <textarea id="poExcerpt" class="field" rows="2" maxlength="200" placeholder="One or two sentences. Shown on the blog cards and in Google results."></textarea>
+        <p class="mt-1 text-xs text-soft"><span id="poExcerptCount">0</span>/200</p>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-[200px_1fr]">
+        <div>
+          <span class="label">Cover image</span>
+          <div id="poPreview" class="flex aspect-[16/10] w-full items-center justify-center overflow-hidden rounded-xl border border-line bg-mint text-3xl">📝</div>
+          <div class="mt-2 flex flex-col gap-2">
+            <button type="button" id="poPick" class="btn-ghost">Choose from library</button>
+            <label class="btn-ghost">Upload new image<input type="file" id="poFile" accept="image/*" class="sr-only"></label>
+            <button type="button" id="poRemoveCover" class="btn-danger hidden">Remove image</button>
+          </div>
+          <p id="poUploadStatus" class="mt-2 text-xs text-soft" aria-live="polite"></p>
+        </div>
+        <div class="space-y-3">
+          <div>
+            <span class="label">Status</span>
+            <div class="flex flex-wrap gap-x-6 gap-y-2">
+              <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="poStatus" value="draft" checked> Draft (hidden from visitors)</label>
+              <label class="flex items-center gap-2 text-sm font-semibold"><input type="radio" name="poStatus" value="published"> Published</label>
+            </div>
+          </div>
+          <div>
+            <label class="label" for="poDate">Publish date and time</label>
+            <input id="poDate" type="datetime-local" class="field !w-auto">
+            <p class="mt-1 text-xs text-soft">Leave empty to publish now. A date in the future schedules the post.</p>
+          </div>
+          <p id="poLive" class="hidden text-sm"></p>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between gap-3">
+          <span class="label !mb-0" id="poContentLabel">Post</span>
+          <button type="button" id="poPreviewToggle" class="btn-ghost !py-1 !text-xs">Preview</button>
+        </div>
+        <div id="postToolbar" class="mt-2 flex flex-wrap items-center gap-1.5 rounded-t-lg border border-line bg-mint p-2" role="toolbar" aria-label="Formatting">
+          <select id="tbBlock" class="field !w-auto !py-1" aria-label="Text style">
+            <option value="p">Normal text</option>
+            <option value="h2">Heading</option>
+            <option value="h3">Subheading</option>
+            <option value="blockquote">Quote</option>
+          </select>
+          <button type="button" class="tb" data-cmd="bold" aria-label="Bold" title="Bold"><b>B</b></button>
+          <button type="button" class="tb" data-cmd="italic" aria-label="Italic" title="Italic"><i>I</i></button>
+          <button type="button" class="tb" data-cmd="insertUnorderedList" aria-label="Bulleted list" title="Bulleted list">&bull; List</button>
+          <button type="button" class="tb" data-cmd="insertOrderedList" aria-label="Numbered list" title="Numbered list">1. List</button>
+          <button type="button" class="tb" id="tbLink" aria-label="Add link" title="Add link">Link</button>
+          <button type="button" class="tb" data-cmd="unlink" aria-label="Remove link" title="Remove link">Unlink</button>
+          <button type="button" class="tb" id="tbImage" aria-label="Insert image" title="Insert image">Image</button>
+          <button type="button" class="tb" data-cmd="insertHorizontalRule" aria-label="Divider line" title="Divider line">Line</button>
+          <button type="button" class="tb" data-cmd="removeFormat" aria-label="Clear formatting" title="Clear formatting">Clear</button>
+          <button type="button" class="tb" data-cmd="undo" aria-label="Undo" title="Undo">Undo</button>
+          <button type="button" class="tb" data-cmd="redo" aria-label="Redo" title="Redo">Redo</button>
+        </div>
+        <div id="postEditor" class="rich min-h-[320px] rounded-b-lg border border-t-0 border-line bg-white p-4 text-base" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="poContentLabel" data-placeholder="Start writing here..."></div>
+        <div id="postPreviewBox" class="rich hidden min-h-[320px] rounded-lg border border-line bg-white p-4 text-base"></div>
+        <p class="mt-1 text-xs text-soft"><span id="poWords">0</span> words &middot; about <span id="poMinutes">1</span> min read. Pasted text is cleaned automatically.</p>
+      </div>
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-center justify-between gap-2">
+      <a id="poViewLink" href="#" target="_blank" rel="noopener" class="btn-ghost hidden">View on site</a>
+      <div class="ml-auto flex gap-2">
+        <button type="button" class="btn-ghost" id="postCancel">Cancel</button>
+        <button type="submit" id="poSave" class="btn-primary">Save post</button>
+      </div>
+    </div>
+  </form>
+</div>
+
 <!-- Photo picker -->
 <div id="pickerModal" class="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto bg-ink/60 p-4" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
   <div class="my-6 w-full max-w-3xl rounded-2xl bg-white p-5 shadow-xl">
@@ -241,6 +384,7 @@
 <div id="toast" class="pointer-events-none fixed bottom-4 left-1/2 z-[60] hidden -translate-x-1/2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white shadow-lg" role="status" aria-live="polite"></div>
 
 <script src="../js/config.js"></script>
+<script src="../js/sanitize.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>

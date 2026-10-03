@@ -1,3 +1,6 @@
+/* Make the HTML "hidden" attribute always win over other display rules. */
+[hidden] { display: none !important; }
+
 /* Mama Picks Kenya: public site styles.
    Colours and fonts are the variables at the top (:root). Change them there. */
 :root {
@@ -496,3 +499,42 @@ header.hero { padding: 30px 0 18px; }
   .card, .pick, .guide-card { transition: none; }
   .card:hover, .pick:hover, .guide-card:hover { transform: none; }
 }
+
+/* ============================================================
+   Blog
+   ============================================================ */
+.post-grid { display: grid; gap: 18px; grid-template-columns: 1fr; margin: 6px 0 24px; }
+@media (min-width: 640px) { .post-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 980px) { .post-grid { grid-template-columns: repeat(3, 1fr); } }
+.post-card { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; text-decoration: none; transition: transform .15s, box-shadow .15s; }
+.post-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(20,48,58,.10); }
+.pc-img { display: grid; place-items: center; aspect-ratio: 16 / 10; background: #eaf3ee; overflow: hidden; }
+.pc-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pc-fallback { font-size: 44px; }
+.pc-body { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px 18px; flex: 1; }
+.pc-body .tag { align-self: flex-start; font-size: 12px; font-weight: 700; background: var(--highlight); padding: 3px 10px; border-radius: 6px; }
+.pc-body h3 { margin: 0; font-family: var(--display); font-size: 1.15rem; line-height: 1.25; letter-spacing: -0.01em; }
+.pc-body p { margin: 0; font-size: 15px; color: var(--ink-soft); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pc-body .meta { margin-top: auto; padding-top: 4px; font-size: 13px; color: var(--ink-soft); }
+.blog-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+.blog-status { margin: 0 0 14px; color: var(--ink-soft); font-size: 14px; }
+.load-more { display: block; margin: 8px auto 0; }
+.latest { margin: 38px 0 6px; }
+.latest-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; margin: 0 0 12px; }
+.latest-head h2 { margin: 0; font-family: var(--display); font-weight: 800; font-size: 1.4rem; letter-spacing: -0.01em; }
+.latest-head a { font-weight: 600; color: var(--cta); }
+.latest[hidden] { display: none; }
+
+/* Single post */
+.post-meta-line { margin: 0 0 6px; font-size: 14px; color: var(--ink-soft); }
+.post-meta-line .tag { display: inline-block; margin-right: 8px; font-size: 12px; font-weight: 700; background: var(--highlight); color: var(--ink); padding: 3px 10px; border-radius: 6px; }
+.post-cover { display: block; width: 100%; max-width: 860px; height: auto; border-radius: 16px; margin: 6px 0 24px; border: 1px solid var(--line); }
+.post-wrap { max-width: 72ch; }
+.rich img { display: block; max-width: 100%; height: auto; border-radius: 12px; margin: 18px 0; }
+.rich blockquote { margin: 20px 0; padding: 4px 0 4px 18px; border-left: 4px solid var(--cta); color: var(--ink); font-size: 1.1rem; }
+.rich hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.rich a { color: var(--cta); }
+.post-share { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 30px 0 8px; padding-top: 20px; border-top: 1px solid var(--line); }
+.post-share strong { margin-right: 4px; }
+.more-posts { margin: 42px 0 0; }
+.more-posts h2 { font-family: var(--display); font-weight: 800; font-size: 1.4rem; margin: 0 0 12px; }

@@ -6,7 +6,23 @@
 
   var C = window.SITE || {};
   var F = window.FEATURES || {};
-  var SW = F.SWAHILI || {};
+  var SW_BUILTIN = {
+    "Blog": "Blogu",
+    "From the blog": "Kutoka kwenye blogu",
+    "See all posts": "Tazama makala zote",
+    "Read more": "Soma zaidi",
+    "min read": "dakika za kusoma",
+    "Share this post": "Shiriki makala hii",
+    "Copy link": "Nakili kiungo",
+    "Link copied": "Kiungo kimenakiliwa",
+    "More to read": "Soma zaidi makala nyingine",
+    "Load more": "Pakia zaidi",
+    "Loading posts...": "Inapakia makala...",
+    "No posts yet. Please check back soon.": "Bado hakuna makala. Tafadhali rudi tena hivi karibuni."
+  };
+  var SW = {};
+  Object.keys(SW_BUILTIN).forEach(function (k) { SW[k] = SW_BUILTIN[k]; });
+  Object.keys(F.SWAHILI || {}).forEach(function (k) { SW[k] = F.SWAHILI[k]; });
   var page = document.body.getAttribute("data-page") || "";
 
   var lang = "en";
@@ -70,7 +86,43 @@
     } catch (e) { logBroken = true; }
   }
 
-  window.MP = { lang: lang, t: t, esc: esc, API: API, KEY: KEY, track: track, logClick: logClick };
+  /* ---------- blog helpers shared by the blog, post and home pages ---------- */
+  function fmtDate(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  function fetchPosts(opts) {
+    opts = opts || {};
+    if (!canLog) return Promise.resolve([]);
+    var cols = opts.full ? "*" : "id,title,slug,excerpt,cover_url,category,reading_minutes,published_at";
+    var q = "select=" + cols + "&published=eq.true&order=published_at.desc";
+    if (opts.slug) q += "&slug=eq." + encodeURIComponent(opts.slug);
+    if (opts.category) q += "&category=eq." + encodeURIComponent(opts.category);
+    if (opts.limit) q += "&limit=" + opts.limit;
+    if (opts.offset) q += "&offset=" + opts.offset;
+    return fetch(API + "/rest/v1/posts?" + q, { headers: { apikey: KEY } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .catch(function (e) { console.warn("Blog posts could not be loaded", e); return null; });
+  }
+
+  function postCard(p) {
+    var img = p.cover_url
+      ? '<img src="' + esc(p.cover_url) + '" alt="" loading="lazy">'
+      : '<span class="pc-fallback" aria-hidden="true">📝</span>';
+    return '<a class="post-card" href="post.html?slug=' + encodeURIComponent(p.slug) + '">' +
+      '<span class="pc-img">' + img + "</span>" +
+      '<span class="pc-body">' +
+        (p.category ? '<span class="tag">' + esc(p.category) + "</span>" : "") +
+        "<h3>" + esc(p.title) + "</h3>" +
+        (p.excerpt ? "<p>" + esc(p.excerpt) + "</p>" : "") +
+        '<span class="meta">' + esc(fmtDate(p.published_at)) + (p.reading_minutes ? " &middot; " + p.reading_minutes + " " + esc(t("min read")) : "") + "</span>" +
+      "</span></a>";
+  }
+
+  window.MP = { lang: lang, t: t, esc: esc, API: API, KEY: KEY, track: track, logClick: logClick,
+                fetchPosts: fetchPosts, postCard: postCard, fmtDate: fmtDate };
 
   /* ---------- announcement bar ---------- */
   (function promo() {
@@ -108,16 +160,22 @@
   var file = (location.pathname.split("/").pop() || "index.html");
   var NAV = [
     ["index.html", "Shop"],
+    ["blog.html", "Blog"],
     ["guides.html", "Guides"],
-    ["hospital-bag-checklist.html", "Hospital bag list"],
-    ["due-date-calculator.html", "Due date calculator"],
     ["about.html", "About"]
   ];
+  // Pages that belong under a menu item (so the menu item stays highlighted)
+  var PARENT = {
+    "post.html": "blog.html",
+    "hospital-bag-checklist.html": "guides.html", "due-date-calculator.html": "guides.html",
+    "newborn-essentials-guide.html": "guides.html", "baby-shower-gift-guide.html": "guides.html"
+  };
+  var currentNav = PARENT[location.pathname.split("/").pop()] || (location.pathname.split("/").pop() || "index.html");
 
   var headerEl = document.getElementById("site-header");
   if (headerEl) {
     var links = NAV.map(function (n) {
-      var cur = n[0] === file ? ' aria-current="page"' : "";
+      var cur = n[0] === currentNav ? ' aria-current="page"' : "";
       return '<a href="' + n[0] + '"' + cur + ">" + esc(t(n[1])) + "</a>";
     }).join("");
     headerEl.className = "site-header";
@@ -177,7 +235,7 @@
       '<div class="wrap">' + join +
         '<div class="footer-grid">' +
           "<div><h3>" + esc(C.SITE_NAME) + "</h3><p>" + esc(t("Handpicked finds for bump, birth and baby")) + ".</p></div>" +
-          "<div><h3>" + esc(t("Explore")) + '</h3><ul><li><a href="index.html">' + esc(t("Shop")) + '</a></li><li><a href="guides.html">' + esc(t("Guides")) +
+          "<div><h3>" + esc(t("Explore")) + '</h3><ul><li><a href="index.html">' + esc(t("Shop")) + '</a></li><li><a href="blog.html">' + esc(t("Blog")) + '</a></li><li><a href="guides.html">' + esc(t("Guides")) +
             '</a></li><li><a href="hospital-bag-checklist.html">' + esc(t("Hospital bag list")) + '</a></li><li><a href="due-date-calculator.html">' + esc(t("Due date calculator")) +
             '</a></li><li><a href="about.html">' + esc(t("About")) + '</a></li><li><a href="privacy.html">' + esc(t("Privacy")) + "</a></li></ul></div>" +
           "<div><h3>" + esc(t("Connect")) + "</h3><ul>" + social.join("") + "</ul></div>" +

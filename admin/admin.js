@@ -52,6 +52,9 @@
   var images = [];          // {name, url, created}
   var counts = {};          // product id -> {clicks, adjust}
   var pickerCallback = null;
+  var blogImages = [];      // images inside the blog/ folder
+  var posts = [];
+  var blogReady = false;    // true once supabase-blog.sql has been run
   var HAS_BADGE = false;    // true once the optional supabase-upgrade.sql has been run
 
   /* ---------- modals ---------- */
@@ -70,7 +73,10 @@
     if (c) closeModal(c.getAttribute("data-close"));
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") { closeModal("pickerModal"); if ($("#pickerModal").classList.contains("hidden")) closeModal("productModal"); }
+    if (e.key !== "Escape") return;
+    if (!$("#pickerModal").classList.contains("hidden")) { closeModal("pickerModal"); return; }
+    if (!$("#postModal").classList.contains("hidden")) { requestClosePost(); return; }
+    closeModal("productModal");
   });
 
   /* ---------- auth ---------- */
@@ -119,7 +125,7 @@
 
   /* ---------- tabs ---------- */
   function selectTab(which) {
-    ["products", "images", "insights"].forEach(function (name) {
+    ["products", "images", "blog", "insights"].forEach(function (name) {
       var cap = name.charAt(0).toUpperCase() + name.slice(1);
       $("#tab" + cap).setAttribute("aria-selected", String(name === which));
       if (name === which) show($("#panel" + cap)); else hide($("#panel" + cap));
@@ -128,6 +134,7 @@
   }
   $("#tabProducts").addEventListener("click", function () { selectTab("products"); });
   $("#tabImages").addEventListener("click", function () { selectTab("images"); });
+  $("#tabBlog").addEventListener("click", function () { selectTab("blog"); });
   $("#tabInsights").addEventListener("click", function () { selectTab("insights"); });
 
   /* ---------- loading data ---------- */
@@ -146,27 +153,50 @@
     (r.data || []).forEach(function (row) { counts[row.product_id] = row; });
   }
 
+  function mapFiles(list, prefix) {
+    return (list || [])
+      .filter(function (o) { return o.name && o.name.charAt(0) !== "." && o.id; })   // skips folders
+      .map(function (o) {
+        var path = prefix + o.name;
+        return {
+          name: o.name,
+          path: path,
+          url: sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl,
+          created: o.created_at
+        };
+      });
+  }
+
   async function loadImages() {
     var r = await sb.storage.from(BUCKET).list("", {
       limit: 500,
       sortBy: { column: "created_at", order: "desc" }
     });
     if (r.error) { toast("Could not load photos: " + r.error.message, true); return; }
-    images = (r.data || [])
-      .filter(function (o) { return o.name && o.name.charAt(0) !== "."; })
-      .map(function (o) {
-        return {
-          name: o.name,
-          url: sb.storage.from(BUCKET).getPublicUrl(o.name).data.publicUrl,
-          created: o.created_at
-        };
-      });
+    images = mapFiles(r.data, "");
+  }
+
+  async function loadBlogImages() {
+    var r = await sb.storage.from(BUCKET).list("blog", {
+      limit: 500,
+      sortBy: { column: "created_at", order: "desc" }
+    });
+    if (r.error) { blogImages = []; return; }
+    blogImages = mapFiles(r.data, "blog/");
+  }
+
+  async function loadPosts() {
+    var r = await sb.from("posts").select("*").order("created_at", { ascending: false });
+    if (r.error) { blogReady = false; posts = []; return; }
+    blogReady = true;
+    posts = r.data || [];
   }
 
   async function refreshAll() {
-    await Promise.all([loadProducts(), loadImages(), loadCounts()]);
+    await Promise.all([loadProducts(), loadImages(), loadBlogImages(), loadCounts(), loadPosts()]);
     renderProducts();
     renderImages();
+    renderBlog();
   }
 
   /* ---------- products list ---------- */
@@ -433,27 +463,56 @@
     });
   }
 
+  /* Blog images keep their shape: shrunk to at most BLOG_MAX pixels wide (never enlarged). */
+  var BLOG_MAX = 1200;
+  async function makeBlogBlob(file) {
+    var img = await loadImageElement(file);
+    var iw = img.naturalWidth, ih = img.naturalHeight;
+    var scale = Math.min(1, BLOG_MAX / iw);
+    var w = Math.max(1, Math.round(iw * scale)), h = Math.max(1, Math.round(ih * scale));
+    var canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, w, h);
+    return new Promise(function (resolve, reject) {
+      canvas.toBlob(function (b) {
+        if (b) resolve(b); else reject(new Error("Could not process the picture"));
+      }, "image/jpeg", JPEG_QUALITY);
+    });
+  }
+
+  /* mode: "fit" or "crop" = square product photo; "blog" = blog image (own shape, in the blog/ folder) */
   async function uploadPhoto(file, mode) {
     if (!/^image\//.test(file.type)) throw new Error('"' + file.name + '" is not a picture.');
-    var blob = await makeSquareBlob(file, mode);
+    var isBlog = mode === "blog";
+    var blob = isBlog ? await makeBlogBlob(file) : await makeSquareBlob(file, mode);
     var base = slug(file.name.replace(/\.[^.]+$/, "")) || "photo";
-    var name = Date.now() + "-" + base + ".jpg";
-    var up = await sb.storage.from(BUCKET).upload(name, blob, {
+    var path = (isBlog ? "blog/" : "") + Date.now() + "-" + base + ".jpg";
+    var up = await sb.storage.from(BUCKET).upload(path, blob, {
       contentType: "image/jpeg",
       cacheControl: "31536000",
       upsert: false
     });
     if (up.error) throw new Error("Upload failed: " + up.error.message);
-    return sb.storage.from(BUCKET).getPublicUrl(name).data.publicUrl;
+    return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
   }
 
   /* ---------- images tab ---------- */
+  $("#uploadKind").addEventListener("change", function () {
+    if ($("#uploadKind").value === "blog") hide($("#fitWrap")); else show($("#fitWrap"));
+  });
+
   $("#uploadInput").addEventListener("change", async function (e) {
     var files = Array.prototype.slice.call(e.target.files);
     e.target.value = "";
     if (files.length === 0) return;
     var status = $("#uploadStatus");
-    var mode = $("#fitMode").value;
+    var mode = $("#uploadKind").value === "blog" ? "blog" : $("#fitMode").value;
     var done = 0, failed = [];
     for (var i = 0; i < files.length; i++) {
       status.textContent = "Uploading " + (i + 1) + " of " + files.length + "...";
@@ -463,44 +522,52 @@
     status.textContent = done + " photo" + (done === 1 ? "" : "s") + " uploaded." +
       (failed.length ? " " + failed.length + " failed." : "");
     if (failed.length) toast(failed[0], true);
-    await loadImages();
+    await Promise.all([loadImages(), loadBlogImages()]);
     renderImages();
   });
 
-  function usageCount(url) {
-    return products.filter(function (p) { return p.image_url === url; }).length;
+  function usageText(url) {
+    var prods = products.filter(function (p) { return p.image_url === url; }).length;
+    var blogs = posts.filter(function (p) { return p.cover_url === url || (p.content || "").indexOf(url) !== -1; }).length;
+    var parts = [];
+    if (prods) parts.push(prods + " product" + (prods === 1 ? "" : "s"));
+    if (blogs) parts.push(blogs + " post" + (blogs === 1 ? "" : "s"));
+    return { count: prods + blogs, text: parts.join(" and ") };
   }
 
-  function renderImages() {
-    $("#imagesTitle").textContent = "Photo library (" + images.length + ")";
-    var grid = $("#imageGrid");
+  function renderGrid(list, grid, empty, title, label) {
+    title.textContent = label + " (" + list.length + ")";
     grid.innerHTML = "";
-    if (images.length === 0) { show($("#imagesEmpty")); return; }
-    hide($("#imagesEmpty"));
-
-    images.forEach(function (img) {
-      var used = usageCount(img.url);
+    if (list.length === 0) { show(empty); return; }
+    hide(empty);
+    list.forEach(function (img) {
+      var u = usageText(img.url);
       var card = document.createElement("div");
       card.className = "overflow-hidden rounded-2xl bg-white shadow-sm";
       card.innerHTML =
         '<div class="aspect-square bg-white"><img src="' + esc(img.url) + '" alt="" loading="lazy" class="h-full w-full object-contain"></div>' +
         '<div class="p-2">' +
           '<p class="truncate text-xs text-soft" title="' + esc(img.name) + '">' + esc(img.name) + "</p>" +
-          '<p class="text-xs ' + (used ? "font-semibold text-ink" : "text-soft") + '">' + (used ? "Used by " + used + " product" + (used === 1 ? "" : "s") : "Not used") + "</p>" +
+          '<p class="text-xs ' + (u.count ? "font-semibold text-ink" : "text-soft") + '">' + (u.count ? "Used by " + esc(u.text) : "Not used") + "</p>" +
           '<div class="mt-2 flex gap-2">' +
-            '<button type="button" class="btn-ghost flex-1 !px-2 !py-1 !text-xs" data-action="copy" data-name="' + esc(img.name) + '">Copy link</button>' +
-            '<button type="button" class="btn-danger flex-1 !px-2 !py-1 !text-xs" data-action="delete" data-name="' + esc(img.name) + '">Delete</button>' +
+            '<button type="button" class="btn-ghost flex-1 !px-2 !py-1 !text-xs" data-action="copy" data-path="' + esc(img.path) + '">Copy link</button>' +
+            '<button type="button" class="btn-danger flex-1 !px-2 !py-1 !text-xs" data-action="delete" data-path="' + esc(img.path) + '">Delete</button>' +
           "</div>" +
         "</div>";
       grid.appendChild(card);
     });
   }
 
-  $("#imageGrid").addEventListener("click", async function (e) {
+  function renderImages() {
+    renderGrid(images, $("#imageGrid"), $("#imagesEmpty"), $("#imagesTitle"), "Product photos");
+    renderGrid(blogImages, $("#blogImageGrid"), $("#blogImagesEmpty"), $("#blogImagesTitle"), "Blog images");
+  }
+
+  async function onImageGridClick(e) {
     var b = e.target.closest("[data-action]");
     if (!b) return;
-    var name = b.getAttribute("data-name");
-    var img = images.filter(function (x) { return x.name === name; })[0];
+    var path = b.getAttribute("data-path");
+    var img = images.concat(blogImages).filter(function (x) { return x.path === path; })[0];
     if (!img) return;
 
     if (b.getAttribute("data-action") === "copy") {
@@ -509,42 +576,384 @@
       return;
     }
 
-    var used = usageCount(img.url);
-    var msg = used
-      ? "This photo is used by " + used + " product" + (used === 1 ? "" : "s") + ". If you delete it, " +
-        (used === 1 ? "that product" : "those products") + " will show an emoji instead until you choose a new photo.\n\nDelete anyway?"
-      : "Delete this photo? This cannot be undone.";
+    var u = usageText(img.url);
+    var msg = u.count
+      ? "This image is used by " + u.text + ". If you delete it, it will disappear from " +
+        (u.count === 1 ? "it" : "them") + " until you choose a new one.\n\nDelete anyway?"
+      : "Delete this image? This cannot be undone.";
     if (!confirm(msg)) return;
 
-    var r = await sb.storage.from(BUCKET).remove([name]);
+    var r = await sb.storage.from(BUCKET).remove([path]);
     if (r.error) { toast("Could not delete: " + r.error.message, true); return; }
-    toast("Photo deleted");
-    await loadImages();
+    toast("Image deleted");
+    await Promise.all([loadImages(), loadBlogImages()]);
     renderImages();
-  });
+  }
+  $("#imageGrid").addEventListener("click", onImageGridClick);
+  $("#blogImageGrid").addEventListener("click", onImageGridClick);
 
   /* ---------- picker ---------- */
-  function openPicker(cb) {
+  /* kind "blog": blog images first, then product photos. Otherwise product photos only. */
+  function openPicker(cb, kind) {
     pickerCallback = cb;
     var grid = $("#pickerGrid");
     grid.innerHTML = "";
-    if (images.length === 0) { show($("#pickerEmpty")); }
-    else {
-      hide($("#pickerEmpty"));
-      images.forEach(function (img) {
+    var groups = kind === "blog"
+      ? [["Blog images", blogImages], ["Product photos", images]]
+      : [["", images]];
+    var total = 0;
+    groups.forEach(function (g) {
+      if (!g[1].length) return;
+      total += g[1].length;
+      if (g[0]) {
+        var h = document.createElement("p");
+        h.className = "col-span-full mt-2 text-sm font-bold";
+        h.textContent = g[0];
+        grid.appendChild(h);
+      }
+      g[1].forEach(function (img) {
         var b = document.createElement("button");
         b.type = "button";
         b.className = "aspect-square overflow-hidden rounded-xl border-2 border-line bg-white hover:border-cta focus:border-cta focus:outline-none";
         b.innerHTML = '<img src="' + esc(img.url) + '" alt="' + esc(img.name) + '" loading="lazy" class="h-full w-full object-contain">';
         b.addEventListener("click", function () {
-          if (pickerCallback) pickerCallback(img.url);
           closeModal("pickerModal");
+          if (pickerCallback) pickerCallback(img.url);
         });
         grid.appendChild(b);
       });
-    }
+    });
+    if (total === 0) show($("#pickerEmpty")); else hide($("#pickerEmpty"));
     openModal("pickerModal");
   }
+
+  /* ---------- blog ---------- */
+  var BLOG_SQL_NOTE = "<strong>The blog needs a one-time setup.</strong> In Supabase, open <em>SQL Editor</em>, paste the contents of <code>supabase-blog.sql</code>, and click <em>Run</em>. Then reload this page.";
+
+  function postStatus(p) {
+    if (!p.published) return { label: "Draft", cls: "bg-line text-ink" };
+    if (p.published_at && new Date(p.published_at) > new Date()) return { label: "Scheduled", cls: "bg-sun text-ink" };
+    return { label: "Published", cls: "bg-ink text-white" };
+  }
+
+  function renderBlog() {
+    var notice = $("#blogNotice");
+    var list = $("#postList");
+    list.innerHTML = "";
+    hide($("#postsEmpty"));
+    $("#blogTitle").textContent = blogReady ? "Blog posts (" + posts.length + ")" : "Blog posts";
+    if (!blogReady) {
+      notice.innerHTML = BLOG_SQL_NOTE;
+      show(notice);
+      $("#addPost").disabled = true;
+      return;
+    }
+    hide(notice);
+    $("#addPost").disabled = false;
+    if (posts.length === 0) { show($("#postsEmpty")); return; }
+
+    posts.forEach(function (p) {
+      var st = postStatus(p);
+      var date = p.published_at ? new Date(p.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "No date";
+      var thumb = p.cover_url
+        ? '<img src="' + esc(p.cover_url) + '" alt="" class="h-full w-full object-cover">'
+        : '<span class="text-2xl">📝</span>';
+      var row = document.createElement("div");
+      row.className = "flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm";
+      row.innerHTML =
+        '<div class="flex h-16 w-24 flex-none items-center justify-center overflow-hidden rounded-lg border border-line bg-mint">' + thumb + "</div>" +
+        '<div class="min-w-0 flex-1">' +
+          '<p class="truncate font-semibold">' + esc(p.title) + "</p>" +
+          '<p class="truncate text-sm text-soft">' + esc(p.category || "No category") + " &middot; " + esc(date) + " &middot; " + (p.reading_minutes || 1) + " min</p>" +
+          '<span class="mt-1 inline-block rounded px-2 py-0.5 text-xs font-bold ' + st.cls + '">' + st.label + "</span>" +
+        "</div>" +
+        '<div class="flex flex-none flex-col gap-2 sm:flex-row">' +
+          '<button type="button" class="btn-ghost" data-post-action="edit" data-id="' + esc(p.id) + '">Edit</button>' +
+          (p.published ? '<a class="btn-ghost" target="_blank" rel="noopener" href="../post.html?slug=' + encodeURIComponent(p.slug) + '">View</a>' : "") +
+          '<button type="button" class="btn-danger" data-post-action="delete" data-id="' + esc(p.id) + '">Delete</button>' +
+        "</div>";
+      list.appendChild(row);
+    });
+  }
+
+  $("#postList").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-post-action]");
+    if (!b) return;
+    var p = posts.filter(function (x) { return x.id === b.getAttribute("data-id"); })[0];
+    if (!p) return;
+    if (b.getAttribute("data-post-action") === "edit") openPostForm(p); else deletePost(p);
+  });
+
+  async function deletePost(p) {
+    if (!confirm('Delete the post "' + p.title + '"? This cannot be undone.\n\n(Its images stay in your library.)')) return;
+    var r = await sb.from("posts").delete().eq("id", p.id);
+    if (r.error) { toast("Could not delete: " + r.error.message, true); return; }
+    toast("Post deleted");
+    await loadPosts();
+    renderBlog();
+    renderImages();
+  }
+
+  /* ----- post editor ----- */
+  var editor = $("#postEditor");
+  var postDirty = false;
+  var slugTouched = false;
+  var savedRange = null;
+
+  function postSlug(str) {
+    return String(str).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  }
+  function toLocalInput(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d)) return "";
+    var pad = function (n) { return String(n).padStart(2, "0"); };
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function countWords(html) {
+    var tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    var text = (tmp.textContent || "").trim();
+    return text ? text.split(/\s+/).length : 0;
+  }
+  function updateWordCount() {
+    var w = countWords(editor.innerHTML);
+    $("#poWords").textContent = w;
+    $("#poMinutes").textContent = Math.max(1, Math.ceil(w / 200));
+  }
+  function markDirty() { postDirty = true; }
+
+  function setCover(url) {
+    $("#poCover").value = url || "";
+    var box = $("#poPreview");
+    if (url) {
+      box.innerHTML = '<img src="' + esc(url) + '" alt="Cover image" class="h-full w-full object-cover">';
+      show($("#poRemoveCover"));
+    } else {
+      box.textContent = "📝";
+      hide($("#poRemoveCover"));
+    }
+  }
+
+  function setPreviewMode(on) {
+    if (on) {
+      $("#postPreviewBox").innerHTML = window.MPSanitize.clean(editor.innerHTML) || '<p class="text-soft">Nothing to preview yet.</p>';
+      hide(editor); hide($("#postToolbar")); show($("#postPreviewBox"));
+      $("#poPreviewToggle").textContent = "Back to editing";
+    } else {
+      show(editor); show($("#postToolbar")); hide($("#postPreviewBox"));
+      $("#poPreviewToggle").textContent = "Preview";
+    }
+  }
+
+  function openPostForm(p) {
+    var isNew = !p;
+    $("#postModalTitle").textContent = isNew ? "New post" : "Edit post";
+    $("#poId").value = isNew ? "" : p.id;
+    $("#poTitle").value = isNew ? "" : p.title;
+    $("#poSlug").value = isNew ? "" : p.slug;
+    slugTouched = !isNew;
+    $("#poCategory").value = isNew ? "" : (p.category || "");
+    $("#poExcerpt").value = isNew ? "" : (p.excerpt || "");
+    $("#poExcerptCount").textContent = $("#poExcerpt").value.length;
+    editor.innerHTML = isNew ? "" : window.MPSanitize.clean(p.content || "");
+    document.querySelector('input[name="poStatus"][value="' + (!isNew && p.published ? "published" : "draft") + '"]').checked = true;
+    $("#poDate").value = isNew ? "" : toLocalInput(p.published_at);
+    $("#poUploadStatus").textContent = "";
+    setCover(isNew ? "" : p.cover_url);
+    setPreviewMode(false);
+    updateWordCount();
+
+    var live = $("#poLive");
+    var link = $("#poViewLink");
+    if (!isNew && p.published) {
+      link.href = "../post.html?slug=" + encodeURIComponent(p.slug);
+      show(link);
+    } else { hide(link); }
+    hide(live);
+
+    postDirty = false;
+    openModal("postModal");
+    $("#poTitle").focus();
+  }
+
+  function requestClosePost() {
+    if (postDirty && !confirm("Close without saving your changes?")) return;
+    closeModal("postModal");
+    postDirty = false;
+  }
+
+  $("#addPost").addEventListener("click", function () { openPostForm(null); });
+  $("#postClose").addEventListener("click", requestClosePost);
+  $("#postCancel").addEventListener("click", requestClosePost);
+
+  $("#poTitle").addEventListener("input", function () {
+    if (!slugTouched) $("#poSlug").value = postSlug($("#poTitle").value);
+    markDirty();
+  });
+  $("#poSlug").addEventListener("input", function () { slugTouched = true; markDirty(); });
+  $("#poSlug").addEventListener("blur", function () { $("#poSlug").value = postSlug($("#poSlug").value); });
+  ["#poCategory", "#poDate"].forEach(function (sel) { $(sel).addEventListener("input", markDirty); });
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="poStatus"]'), function (r) { r.addEventListener("change", markDirty); });
+  $("#poExcerpt").addEventListener("input", function () {
+    $("#poExcerptCount").textContent = $("#poExcerpt").value.length;
+    markDirty();
+  });
+  $("#poRemoveCover").addEventListener("click", function () { setCover(""); markDirty(); });
+  $("#poPick").addEventListener("click", function () { openPicker(function (url) { setCover(url); markDirty(); }, "blog"); });
+  $("#poPreviewToggle").addEventListener("click", function () {
+    setPreviewMode(editor.classList.contains("hidden") ? false : true);
+  });
+
+  $("#poFile").addEventListener("change", async function (e) {
+    var file = e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    $("#poUploadStatus").textContent = "Uploading...";
+    try {
+      var url = await uploadPhoto(file, "blog");
+      setCover(url);
+      markDirty();
+      $("#poUploadStatus").textContent = "Image uploaded.";
+      await loadBlogImages();
+      renderImages();
+    } catch (err) {
+      $("#poUploadStatus").textContent = "";
+      toast(err.message || "Upload failed", true);
+    }
+  });
+
+  /* Toolbar. mousedown is cancelled so the text selection is not lost. */
+  document.addEventListener("selectionchange", function () {
+    var sel = window.getSelection();
+    if (sel.rangeCount && editor.contains(sel.anchorNode)) savedRange = sel.getRangeAt(0).cloneRange();
+  });
+  function restoreSelection() {
+    editor.focus();
+    if (savedRange) {
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+  }
+  function exec(cmd, val) {
+    restoreSelection();
+    try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
+    document.execCommand(cmd, false, val || null);
+    markDirty();
+    updateWordCount();
+  }
+  $("#postToolbar").addEventListener("mousedown", function (e) {
+    if (e.target.closest("button")) e.preventDefault();
+  });
+  $("#postToolbar").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-cmd]");
+    if (b) exec(b.getAttribute("data-cmd"));
+  });
+  $("#tbBlock").addEventListener("change", function () {
+    exec("formatBlock", "<" + $("#tbBlock").value + ">");
+    $("#tbBlock").value = "p";
+    editor.focus();
+  });
+  $("#tbLink").addEventListener("click", function () {
+    var url = prompt("Paste the link (for example your Jumia affiliate link):", "https://");
+    if (!url || url === "https://") return;
+    if (!/^(https?:\/\/|mailto:|tel:)/i.test(url)) url = "https://" + url;
+    var sel = window.getSelection();
+    if (!savedRange || savedRange.collapsed) {
+      var label = prompt("Link text (what readers will see):", "Check it out");
+      if (!label) return;
+      var a = document.createElement("a");
+      a.href = url;
+      a.textContent = label;
+      exec("insertHTML", a.outerHTML);
+    } else {
+      exec("createLink", url);
+    }
+  });
+  $("#tbImage").addEventListener("click", function () {
+    openPicker(function (url) {
+      var alt = prompt("Describe the picture in a few words (helps people who cannot see it, and Google):", "") || "";
+      var img = document.createElement("img");
+      img.src = url;
+      img.alt = alt;
+      exec("insertHTML", img.outerHTML);
+    }, "blog");
+  });
+
+  editor.addEventListener("focus", function () {
+    try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
+  });
+  editor.addEventListener("input", function () { markDirty(); updateWordCount(); });
+  editor.addEventListener("paste", function (e) {
+    e.preventDefault();
+    var cd = e.clipboardData || window.clipboardData;
+    var html = cd.getData("text/html");
+    var text = cd.getData("text/plain");
+    if (html) {
+      document.execCommand("insertHTML", false, window.MPSanitize.clean(html));
+    } else {
+      var esc2 = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      var paras = esc2.split(/\n{2,}/).map(function (t) { return "<p>" + t.replace(/\n/g, "<br>") + "</p>"; }).join("");
+      document.execCommand("insertHTML", false, paras);
+    }
+  });
+
+  $("#postForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var title = $("#poTitle").value.trim();
+    if (!title) { toast("Please enter a title", true); return; }
+    var content = window.MPSanitize.clean(editor.innerHTML);
+    var published = document.querySelector('input[name="poStatus"]:checked').value === "published";
+    if (published && !content) { toast("Please write something before publishing", true); return; }
+
+    var slugVal = postSlug($("#poSlug").value || title) || ("post-" + Date.now());
+    $("#poSlug").value = slugVal;
+
+    var dateVal = $("#poDate").value ? new Date($("#poDate").value) : null;
+    if (dateVal && isNaN(dateVal)) dateVal = null;
+    if (published && !dateVal) dateVal = new Date();
+
+    var payload = {
+      title: title,
+      slug: slugVal,
+      excerpt: $("#poExcerpt").value.trim(),
+      content: content,
+      cover_url: $("#poCover").value,
+      category: $("#poCategory").value.trim(),
+      reading_minutes: Math.max(1, Math.ceil(countWords(content) / 200)),
+      published: published,
+      published_at: dateVal ? dateVal.toISOString() : null,
+      updated_at: new Date().toISOString()
+    };
+    var id = $("#poId").value;
+
+    var save = $("#poSave");
+    save.disabled = true;
+    save.textContent = "Saving...";
+    try {
+      var r = id
+        ? await sb.from("posts").update(payload).eq("id", id)
+        : await sb.from("posts").insert(payload).select().single();
+      if (r.error) {
+        if (r.error.code === "23505" || /duplicate|unique/i.test(r.error.message || "")) {
+          throw new Error("That web address is already used by another post. Please change it.");
+        }
+        throw r.error;
+      }
+      postDirty = false;
+      closeModal("postModal");
+      toast(published ? "Post saved and published" : "Draft saved");
+      await loadPosts();
+      renderBlog();
+      renderImages();
+    } catch (err) {
+      toast("Could not save: " + (err.message || err), true);
+    } finally {
+      save.disabled = false;
+      save.textContent = "Save post";
+    }
+  });
 
   /* ---------- insights ---------- */
   async function loadInsights() {
