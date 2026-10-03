@@ -11,7 +11,7 @@
 -- Only the account with this email can add, edit or delete anything.
 create or replace function public.is_admin() returns boolean
 language sql stable as $$
-  select lower(coalesce(auth.jwt() ->> 'email', '')) = lower('PUT_YOUR_ADMIN_EMAIL_HERE')   -- <<< CHANGE THIS
+  select lower(coalesce(auth.jwt() ->> 'email', '')) = lower('namisiron@gmail.com')   -- <<< CHANGE THIS
 $$;
 grant execute on function public.is_admin() to anon, authenticated;
 
