@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Dashboard | Mama Picks Kenya</title>
+
+<!-- Tailwind CSS (loaded from the web, so there is nothing to install or build) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: { colors: {
+      ink: "#14303a", soft: "#4b6670", line: "#d3e2db", mint: "#eef5f1",
+      cta: "#e0476f", ctadark: "#c93460", sun: "#f6d86b"
+    } } }
+  };
+</script>
+<style type="text/tailwindcss">
+  @layer components {
+    .btn { @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer; }
+    .btn-primary { @apply btn bg-cta text-white hover:bg-ctadark; }
+    .btn-dark { @apply btn bg-ink text-white hover:bg-soft; }
+    .btn-ghost { @apply btn border border-ink text-ink hover:bg-sun; }
+    .btn-danger { @apply btn border border-red-600 text-red-700 hover:bg-red-50; }
+    .field { @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ink; }
+    .label { @apply mb-1 block text-sm font-semibold; }
+    .tab { @apply cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-semibold text-soft hover:text-ink; }
+    .tab[aria-selected="true"] { @apply border-cta text-ink; }
+  }
+</style>
+
+<!-- Supabase client library -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+
+<body class="min-h-screen bg-mint text-ink antialiased">
+
+<!-- Shown if js/config.js has no Supabase details yet -->
+<div id="notConfigured" class="mx-auto hidden max-w-xl p-6">
+  <div class="rounded-2xl bg-white p-6 shadow-sm">
+    <h1 class="text-xl font-bold">Dashboard not connected yet</h1>
+    <p class="mt-2 text-soft">Open <code>js/config.js</code> and fill in <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code>, then refresh this page. The steps are in README.md.</p>
+  </div>
+</div>
+
+<!-- Login -->
+<div id="loginView" class="mx-auto hidden max-w-sm p-6 pt-16">
+  <form id="loginForm" class="rounded-2xl bg-white p-6 shadow-sm">
+    <h1 class="text-xl font-bold">Dashboard login</h1>
+    <p class="mt-1 text-sm text-soft">Mama Picks Kenya</p>
+    <p id="loginError" class="mt-4 hidden rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert"></p>
+    <label class="label mt-4" for="email">Email</label>
+    <input id="email" type="email" class="field" autocomplete="username" required>
+    <label class="label mt-4" for="password">Password</label>
+    <input id="password" type="password" class="field" autocomplete="current-password" required>
+    <button id="loginBtn" type="submit" class="btn-primary mt-6 w-full">Log in</button>
+  </form>
+</div>
+
+<!-- Main app -->
+<div id="appView" class="hidden">
+  <header class="border-b border-line bg-white">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div>
+        <h1 class="text-lg font-extrabold leading-tight">Dashboard</h1>
+        <p class="text-xs text-soft" id="userEmail"></p>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="../index.html" target="_blank" rel="noopener" class="btn-ghost">View site</a>
+        <button id="signOut" type="button" class="btn-ghost">Sign out</button>
+      </div>
+    </div>
+    <div class="mx-auto flex max-w-6xl px-4" role="tablist">
+      <button class="tab" role="tab" id="tabProducts" aria-selected="true" aria-controls="panelProducts" type="button">Products</button>
+      <button class="tab" role="tab" id="tabImages" aria-selected="false" aria-controls="panelImages" type="button">Images</button>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl p-4 pb-24">
+
+    <!-- PRODUCTS -->
+    <section id="panelProducts" role="tabpanel" aria-labelledby="tabProducts">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 class="text-lg font-bold" id="productsTitle">Products</h2>
+        <button id="addProduct" type="button" class="btn-primary">Add product</button>
+      </div>
+      <div id="productList" class="space-y-3"></div>
+      <p id="productsEmpty" class="hidden rounded-2xl bg-white p-6 text-center text-soft">No products yet. Click "Add product" to create your first one.</p>
+    </section>
+
+    <!-- IMAGES -->
+    <section id="panelImages" role="tabpanel" aria-labelledby="tabImages" class="hidden">
+      <div class="mb-6 rounded-2xl bg-white p-5 shadow-sm">
+        <h2 class="text-lg font-bold">Upload photos</h2>
+        <p class="mt-1 text-sm text-soft">Any size or shape works. Each photo is automatically resized to a square 800 x 800 picture and compressed before it is saved, so the site stays fast.</p>
+        <div class="mt-4 flex flex-wrap items-end gap-4">
+          <div>
+            <label class="label" for="fitMode">How to fit the square</label>
+            <select id="fitMode" class="field">
+              <option value="fit">Show the whole photo (white borders if needed)</option>
+              <option value="crop">Fill the square (trims the edges)</option>
+            </select>
+          </div>
+          <label class="btn-primary">
+            Choose photos
+            <input id="uploadInput" type="file" accept="image/*" multiple class="sr-only">
+          </label>
+        </div>
+        <p id="uploadStatus" class="mt-3 text-sm text-soft" aria-live="polite"></p>
+      </div>
+
+      <h2 class="mb-3 text-lg font-bold" id="imagesTitle">Photo library</h2>
+      <div id="imageGrid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"></div>
+      <p id="imagesEmpty" class="hidden rounded-2xl bg-white p-6 text-center text-soft">No photos uploaded yet.</p>
+    </section>
+  </main>
+</div>
+
+<!-- Product form -->
+<div id="productModal" class="fixed inset-0 z-40 hidden items-start justify-center overflow-y-auto bg-ink/60 p-4" role="dialog" aria-modal="true" aria-labelledby="productModalTitle">
+  <form id="productForm" class="my-6 w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl">
+    <div class="flex items-start justify-between gap-3">
+      <h2 class="text-lg font-bold" id="productModalTitle">Add product</h2>
+      <button type="button" class="btn-ghost" data-close="productModal">Close</button>
+    </div>
+
+    <input type="hidden" id="pfId">
+    <input type="hidden" id="pfImage">
+
+    <div class="mt-4 grid gap-4 md:grid-cols-[180px_1fr]">
+      <div>
+        <span class="label">Photo</span>
+        <div id="pfPreview" class="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-line bg-mint text-4xl"></div>
+        <div class="mt-2 flex flex-col gap-2">
+          <button type="button" id="pfPick" class="btn-ghost">Choose from library</button>
+          <label class="btn-ghost">
+            Upload new photo
+            <input type="file" id="pfFile" accept="image/*" class="sr-only">
+          </label>
+          <button type="button" id="pfRemoveImage" class="btn-danger hidden">Remove photo</button>
+        </div>
+        <label class="mt-3 flex items-start gap-2 text-xs text-soft">
+          <input type="checkbox" id="pfCrop" class="mt-0.5">
+          <span>Fill the square when uploading (trims edges)</span>
+        </label>
+        <p id="pfUploadStatus" class="mt-2 text-xs text-soft" aria-live="polite"></p>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="label" for="pfName">Product name</label>
+          <input id="pfName" class="field" maxlength="120" required>
+        </div>
+        <div>
+          <label class="label" for="pfDesc">Short description</label>
+          <textarea id="pfDesc" class="field" rows="3" maxlength="300" placeholder="One or two sentences on why a mum would want it."></textarea>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="pfCategory">Category</label>
+            <input id="pfCategory" class="field" list="catList" placeholder="e.g. expecting" autocomplete="off">
+            <datalist id="catList"></datalist>
+          </div>
+          <div>
+            <label class="label" for="pfPrice">Price (optional)</label>
+            <input id="pfPrice" class="field" placeholder="KSh 2,499">
+          </div>
+        </div>
+        <div>
+          <label class="label" for="pfLink">Jumia affiliate link</label>
+          <input id="pfLink" class="field" type="url" placeholder="https://...">
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="label" for="pfAdjust">Heart count adjustment</label>
+            <input id="pfAdjust" class="field" type="number" step="1" value="0">
+            <p class="mt-1 text-xs text-soft" id="pfHearts"></p>
+          </div>
+          <div>
+            <label class="label" for="pfSort">Order on the site</label>
+            <input id="pfSort" class="field" type="number" step="1" value="0">
+            <p class="mt-1 text-xs text-soft">Lower numbers appear first.</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-x-6 gap-y-2">
+          <label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" id="pfTrending"> Show "Trending" badge</label>
+          <label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" id="pfPublished" checked> Visible on the site</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 flex justify-end gap-2">
+      <button type="button" class="btn-ghost" data-close="productModal">Cancel</button>
+      <button type="submit" id="pfSave" class="btn-primary">Save product</button>
+    </div>
+  </form>
+</div>
+
+<!-- Photo picker -->
+<div id="pickerModal" class="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto bg-ink/60 p-4" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+  <div class="my-6 w-full max-w-3xl rounded-2xl bg-white p-5 shadow-xl">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-lg font-bold" id="pickerTitle">Choose a photo</h2>
+      <button type="button" class="btn-ghost" data-close="pickerModal">Close</button>
+    </div>
+    <div id="pickerGrid" class="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5"></div>
+    <p id="pickerEmpty" class="mt-4 hidden text-center text-soft">No photos yet. Upload some in the Images tab first.</p>
+  </div>
+</div>
+
+<!-- Messages -->
+<div id="toast" class="pointer-events-none fixed bottom-4 left-1/2 z-[60] hidden -translate-x-1/2 rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white shadow-lg" role="status" aria-live="polite"></div>
+
+<script src="../js/config.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

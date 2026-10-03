@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mama Picks Kenya | Pregnancy and baby finds from Jumia</title>
+<meta name="description" content="Handpicked pregnancy, newborn and mum-care products from Jumia Kenya, with photos, short descriptions and direct links.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="setup-banner" id="setupBanner" hidden>
+  Demo mode: the products below are samples. Edit js/config.js and js/products.js (or use the dashboard), then set SHOW_SETUP_BANNER to false.
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="brand" id="siteName"></p>
+    <h1>Handpicked finds for bump, birth and baby</h1>
+    <p class="lede">Trending and hard-to-find items for mums in Kenya, all available on Jumia. Tap a product to see the price and order.</p>
+    <label class="search">
+      <span class="sr-only" style="position:absolute;left:-9999px">Search products</span>
+      <input type="search" id="q" placeholder="Search pillows, bras, carriers..." autocomplete="off">
+    </label>
+  </div>
+</header>
+
+<div class="categories-bar">
+  <div class="categories" id="categories" role="group" aria-label="Filter by category"></div>
+</div>
+
+<main>
+  <div class="wrap">
+    <p class="count" id="count" aria-live="polite"></p>
+    <div class="grid" id="grid" aria-live="polite"></div>
+    <div class="empty" id="empty" hidden>
+      <p><strong>No products match that search.</strong></p>
+      <p>Try a different word or pick another category above.</p>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><strong>Affiliate disclosure:</strong> Some links on this site are affiliate links. If you buy through them, we may earn a small commission from Jumia at no extra cost to you.</p>
+    <p>Prices, photos and availability are set by Jumia and can change. Check the product page before you order.</p>
+    <p id="year"></p>
+  </div>
+</footer>
+
+<aside class="ad-rail left" id="adLeft" aria-label="Advertisement"></aside>
+<aside class="ad-rail right" id="adRight" aria-label="Advertisement"></aside>
+
+<aside class="book-bar" aria-label="Featured book">
+  <div class="inner">
+    <span class="icon" aria-hidden="true">📖</span>
+    <div class="text">
+      <span class="title" id="bookTitle"></span>
+      <span class="pitch" id="bookPitch"></span>
+    </div>
+    <a class="buy" id="bookBtn" target="_blank" rel="noopener noreferrer"></a>
+  </div>
+</aside>
+
+<script src="js/config.js"></script>
+<script src="js/products.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
